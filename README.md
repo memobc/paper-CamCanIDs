@@ -44,3 +44,4 @@ example, depend on the output of previous scripts.
 | `G_Table2.R`                    | R          | Creates Table 2 from the manuscript. Note: further formatting by hand performed prior to publication.                                         | `Table2.docx`                                                                                                                           |
 | `G_CreateTableS5.R`             | R          | Creates Table S5 from the manuscript.                                                                                                         | `TableS5.docx`                                                                                                                          |# paper-CamCanIDs
 # paper-CamCanIDs
+# paper-CamCanIDs
