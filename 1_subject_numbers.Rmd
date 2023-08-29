@@ -1,0 +1,383 @@
+---
+title: "CamCan Preliminary Analysis"
+author: "Kyle Kurkela"
+date: "`r Sys.Date()`"
+output: 
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
+---
+
+```{r echo = FALSE, message = FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+```{r}
+fd_mean_thresh <- 0.3
+num_runs_thresh <- 1
+age_thresh <- 50
+```
+
+```{r}
+motion <- read_rds('motion.rds')
+
+motion %>%
+  mutate(CCID = str_remove(CCID, 'sub-')) -> motion
+
+head(motion)
+```
+
+```{r paged.print=TRUE}
+df <- read_rds('data.rds')
+
+motion %>% 
+  filter(task == 'movie') %>%
+  group_by(CCID) %>%
+  summarise(BadMotion = sum(fd_mean > fd_mean_thresh), .groups = 'drop') %>%
+  mutate(BadMotion = BadMotion > 1) %>%
+  add_column(task = 'movie') -> movie
+
+motion %>%
+  filter(task != 'movie') %>%
+  mutate(BadMotion = fd_mean > fd_mean_thresh) %>%
+  select(CCID, task, BadMotion) %>%
+  bind_rows(., movie) %>%
+  group_by(CCID) %>%
+  summarise(ExcludeMotion = sum(BadMotion) > num_runs_thresh, .groups = 'drop') -> motion.summary
+
+df %>% 
+  left_join(., motion.summary, by = 'CCID') %>%
+  mutate(ExcludeMotion = if_else(is.na(ExcludeMotion), FALSE, ExcludeMotion)) -> df
+  
+head(df)
+```
+
+Brief Variable Descriptions:
+
+`CCID` = string, CamCan Subject ID  
+`anat_T1w`:`fmap_smt_NA` = logical, whether or not a specific MRI image exists  
+`DetPosPic`:`TotalDetRecalls` = double, number of detailed recalls during the Emotional Memory Task  
+`Age`:`MT_TR` = misc, demographic data provided by CamCan  
+`Ntrials`:`RA` = misc, Cattell Fluid Intelligence Test data  
+`additional_attention_orientation`:`additional_acer` = double, ACE-R test scores  
+
+## How many subjects do we have?
+
+```{r}
+# each row = subject
+nrow(df)
+```
+## How many subjects are usuable?
+
+```{r}
+# Create a new column that indicates where each participants has at least one missing scan
+df %>% 
+  rowwise() %>% 
+  mutate(AnyMissingMRI = !all(c_across(cols = anat_T1w:fmap_smt_NA))) %>% 
+  ungroup() -> df
+
+df %>%
+  ungroup() %>%
+  mutate(AgeExclusion = Age > age_thresh) -> df
+
+# Determine who has missing Emotional Memory data
+df %>%
+  rowwise() %>%
+  mutate(AnyMissingEmoMem = is.na(TotalDetRecalls)) -> df
+
+# Determine who has missing Wechler Memory Data
+df %>%
+  mutate(AnyMissingWechler = any(is.na(homeint_v219), is.na(homeint_v515), is.na(homeint_storyrecall_i), is.na(homeint_storyrecall_d))) -> df
+
+# Determine who has missing Cattell data
+df %>%
+  mutate(AnyMissingCattell = is.na(TotalScore)) -> df
+
+# Determine who has missing ACR-R data
+df %>%
+  mutate(AnyMissingAdd = is.na(additional_memory)) -> df
+
+# Determine who meets preliminary inclusion criterion -- no missing data
+df %>%
+  mutate(MeetsInclusionCriterion = !any(AnyMissingMRI, AnyMissingEmoMem, AgeExclusion, AnyMissingAdd, ExcludeMotion)) -> df
+```
+
+```{r}
+# Hand Code a Sankey Diagram
+
+# Hand write the nodes data frame
+nodes <- data.frame(node = 0:11, 
+                    name = c('All Subjects', 
+                             'Has All MRI Data', 'Missing At Least One Image',
+                             'Low Motion', 'High Motion',
+                             str_glue('Under Age {age_thresh}'), str_glue('Over Age {age_thresh}'),                             
+                             'Has Weschler', 'Missing Weschler',
+                             'Has Emotional Memory', 'Missing Emotional Memory', 
+                             'Meets Inclusion Criteria'),
+                    node_group = c('1', '1', '2', '1', '2', '1', '2', '1', '2', '1', '2', '1'))
+
+# Links
+
+## Missing MRI data
+
+df %>% 
+  ungroup() %>% 
+  count(AnyMissingMRI) %>%
+  pull() -> val
+  
+links <- data.frame(source = c(0, 0), target = c(1,2), value = val)
+
+## Gross Motion
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  count(ExcludeMotion) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(1,1), target = c(3,4), value = val) -> links
+
+## Age Restriction
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  filter(!ExcludeMotion) %>%
+  count(AgeExclusion) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(3,3), target = c(5,6), value = val) -> links
+
+## Missing Wechler
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  filter(!ExcludeMotion) %>%
+  filter(!AgeExclusion) %>%
+  mutate(AnyMissingWechler = factor(AnyMissingWechler, levels = c(FALSE, TRUE), labels = c(FALSE, TRUE))) %>% 
+  count(AnyMissingWechler) %>%
+  complete(AnyMissingWechler, fill = list(n = 0)) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(5,5), target = c(7,8), value = val) -> links
+
+## Missing Missing Emo Mem
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  filter(!ExcludeMotion) %>%
+  filter(!AgeExclusion) %>%
+  filter(!AnyMissingWechler) %>%
+  count(AnyMissingEmoMem) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(7,7), target = c(9,10), value = val) -> links
+
+## 
+
+links %>%
+  add_row(source = 9, target = 11, value = val[1]) -> links
+
+networkD3::sankeyNetwork(Links = links, Nodes = nodes, 
+                         Source = 'source', 
+                         Target = 'target', 
+                         Value = 'value', 
+                         NodeID = 'name', 
+                         units = 'subjects', 
+                         NodeGroup = 'node_group', sinksRight = FALSE, fontSize = 12)
+```
+
+Of the `r nrow(df)` subjects, `r df %>% pull(MeetsInclusionCriterion) %>% sum()` meet the preliminary inclusion of having no missing data on our variables of interest. See the Sankey Diagram above to see why participants were excluded.  
+
+## How correlated are the behavioral variables?
+
+```{r paged.print=TRUE}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  mutate(Sex = factor(Sex)) %>%
+  mutate(Sex = as.numeric(Sex)) %>%
+  select(Age, Sex, TotalDetRecalls, TotalScore, additional_memory, homeint_storyrecall_d) %>%
+  corrr::correlate(quiet = TRUE)
+```
+
+## What is the demographics breakdown of the subjects who meet are inclusion criteria?
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  mutate(AgeBins = cut(Age, breaks = c(18, 28, 38, 48, 58, 68, 78, 89))) %>%
+  select(AgeBins, Sex) %>%
+  table()
+```
+
+## How much variability is there in the subjects who meet our inclusion criteria?
+
+### Emotional Memory Recalls
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  ggplot(aes(x = TotalDetRecalls)) +
+  geom_histogram(bins = 30) +
+  labs(title = 'Emotional Memory: Number of Detailed Recalls')
+```
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  pull(TotalDetRecalls) %>%
+  psych::describe() %>%
+  tibble() %>%
+  select(-vars)
+```
+
+### Emotional Memory Recalls
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  ggplot(aes(x = homeint_storyrecall_d)) +
+  geom_histogram(bins = 30) +
+  labs(title = 'Logical Portion of Wechler Memory Scale: Number of Items Recalled', subtitle = 'After 20 Min Delay')
+```
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  pull(homeint_storyrecall_d) %>%
+  psych::describe() %>%
+  tibble() %>%
+  select(-vars)
+```
+
+## Is this variability related to Age?
+
+### Emotional Memory
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  ggplot(aes(Age, TotalDetRecalls)) +
+  geom_point() +
+  geom_smooth(method = lm, formula = y ~ x) +
+  labs(title = 'Is Memory Ability Related to Age?', subtitle = 'Yes')
+```
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  lm(TotalDetRecalls~Age, data = .) %>%
+  summary()
+```
+
+### Weschler
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  ggplot(aes(Age, homeint_storyrecall_d)) +
+  geom_point() +
+  geom_smooth(method = lm, formula = y ~ x) +
+  labs(title = 'Is Memory Ability Related to Age?', subtitle = 'Yes')
+```
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  lm(homeint_storyrecall_d~Age, data = .) %>%
+  summary()
+```
+
+## Is this varaibility related to sex?
+
+### Emotional Memory
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  ggplot(aes(Sex, TotalDetRecalls)) +
+  geom_boxplot() +
+  labs(title = 'Is memory related to sex?', subtitle = 'Yes')
+```
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  t.test(TotalDetRecalls~Sex, data = .)
+```
+
+### Weschler
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  ggplot(aes(Sex, homeint_storyrecall_d)) +
+  geom_boxplot() +
+  labs(title = 'Is memory related to sex?', subtitle = 'Yes')
+```
+
+```{r}
+df %>%
+  filter(MeetsInclusionCriterion) %>%
+  t.test(homeint_storyrecall_d~Sex, data = .)
+```
+
+## Motion
+
+The functional scans for CamCan look as follows:
+
+Movie Task 
+`CamCan/sub-CC#####/func/sub-CC#####_task-movie_echo-1_bold.nii`
+`CamCan/sub-CC#####/func/sub-CC#####_task-movie_echo-2_bold.nii`
+`CamCan/sub-CC#####/func/sub-CC#####_task-movie_echo-3_bold.nii`
+`CamCan/sub-CC#####/func/sub-CC#####_task-movie_echo-4_bold.nii`
+`CamCan/sub-CC#####/func/sub-CC#####_task-movie_echo-5_bold.nii`
+
+Rest Task
+`CamCan/sub-CC#####/func/sub-CC#####_task-rest_bold.nii`
+
+
+SMT Task
+`CamCan/sub-CC#####/func/sub-CC#####_task-SMT_bold.nii`
+
+## What does gross motion look like for the different scans?
+
+```{r}
+motion %>% 
+  filter(task == 'movie') %>%
+  group_by(CCID) %>%
+  summarise(BadMotion = sum(fd_mean > fd_mean_thresh), .groups = 'drop') %>%
+  mutate(BadMotion = BadMotion > num_runs_thresh) %>%
+  add_column(task = 'movie') -> movie
+
+motion %>%
+  filter(task != 'movie') %>%
+  mutate(BadMotion = fd_mean > fd_mean_thresh) %>%
+  select(CCID, task, BadMotion) %>%
+  bind_rows(., movie) %>%
+  ggplot(aes(x = task, fill = BadMotion)) +
+  geom_bar() +
+  labs(y = 'Numbers of Subjects', x = 'Task')
+```
+
+## What does gross motion look like for the multi-echo movie data?
+
+```{r}
+motion %>% 
+  filter(task == 'movie') %>%
+  group_by(CCID) %>%
+  summarise(BadMotion = sum(fd_mean > fd_mean_thresh), .groups = 'drop') %>%
+  mutate(MotionFilter = BadMotion == 0,
+         MotionFilter = factor(MotionFilter, levels = c(T,F), labels = c('Included', 'Excluded'))) %>%
+  ggplot(aes(x = BadMotion, fill = MotionFilter)) +
+  geom_histogram(bins = 30) +
+  labs(title = 'Number of Motion Corrupted Scans',
+       subtitle = "In CamCan's Multiecho Movie Watching Data",
+       y = 'Number of Subjects',
+       x = 'Number of Echos with fd_mean > 0.2')
+```
+

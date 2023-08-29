@@ -1,0 +1,264 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(gtsummary)
+library(flextable)
+library(officer)
+
+# make the gtsummary tables compact
+theme_gtsummary_compact()
+
+# Read data in. Calculate memory ability index
+read_csv('results/PredictTbl.csv', show_col_types = FALSE) -> PredictTbl_tidy
+
+PredictTbl_tidy$within          <- scale(PredictTbl_tidy$within) %>% as.double()
+PredictTbl_tidy$between         <- scale(PredictTbl_tidy$between) %>% as.double()
+PredictTbl_tidy$extra           <- scale(PredictTbl_tidy$extra) %>% as.double()
+PredictTbl_tidy$hipp            <- scale(PredictTbl_tidy$hipp) %>% as.double()
+#PredictTbl_tidy$memoryability   <- scale(PredictTbl_tidy$memoryability) %>% as.double()
+PredictTbl_tidy$Age             <- scale(PredictTbl_tidy$Age, scale = F) %>% as.double()
+PredictTbl_tidy$additional_acer <- scale(PredictTbl_tidy$additional_acer) %>% as.double()
+PredictTbl_tidy$TotalScore      <- scale(PredictTbl_tidy$TotalScore) %>% as.double()
+```
+
+## Within
+
+```{r warning=FALSE}
+# fit within models
+model1.fit <- lm(memoryability ~ within, 
+                 na.action = na.omit, 
+                 data = PredictTbl_tidy)
+model2.fit <- lm(memoryability ~ within + Age + Sex + fd, 
+                 na.action = na.omit, 
+                 data = PredictTbl_tidy)
+model3.fit <- lm(memoryability ~ within + Age + Sex + fd + additional_acer + TotalScore, 
+                 na.action = na.omit,
+                 data = PredictTbl_tidy)
+```
+
+```{r, warning=FALSE}
+# summarise models with gtsummary
+tbl_regression(model1.fit) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl1
+
+labels <- list(Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model2.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl2
+
+labels <- list(additional_acer ~ "acer", TotalScore ~ 'cattell', Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model3.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl3
+```
+
+```{r}
+# merge and format with flextable
+tbl_merge(tbls = list(tbl1, tbl2, tbl3), tab_spanner = str_c('Model ', 1:3)) %>%
+      modify_table_body(~.x %>% arrange(row_type == "glance_statistic")) %>%
+      as_flex_table() -> FlexTbl1
+
+(FlexTbl1 %>%
+  set_table_properties(layout = "autofit", width = 0.7) %>%
+  set_caption(caption = 'Table S2', autonum = FALSE) %>%
+  footnote(x = ., i = 3, j = 1, ref_symbols = c('3'), value = as_paragraph(c('Female = 0, Male = 1.'))) %>%
+  add_footer_lines(values = c('Table S2: Regression results of average within DMN-C connectivity on memory ability removing GSR from our analysis pipeline. within = average strength of connection among DMN-C regions; acer = cognitive capacity score, cattell = fluid intelligence score.')) -> FlexTbl1)
+```
+
+```{r, warning=FALSE}
+# write out as a word document (.docx)
+flextable::save_as_docx(values = list(FlexTbl1),
+                        align = 'center',
+                        path = 'TableS2.docx',
+                        pr_section = prop_section(
+                            page_size = page_size(width = 6.5, height = 5, orient = "portait"), 
+                            type = "continuous",
+                            page_margins = page_mar(bottom = 0, top = 0, right = 0, left = 0)
+                          ))
+```
+
+## between
+
+```{r}
+# between models
+model4.fit <- lm(memoryability ~ between, na.action = na.omit,
+                 data = PredictTbl_tidy)
+model5.fit <- lm(memoryability ~ between + Age + Sex + fd, na.action = na.omit, 
+                 data = PredictTbl_tidy)
+model6.fit <- lm(memoryability ~ between + Age + Sex + fd + additional_acer + TotalScore, 
+                 na.action = na.omit,
+                 data = PredictTbl_tidy)
+```
+
+
+```{r}
+# summarise models with gtsummary
+tbl_regression(model4.fit) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl4
+
+labels <- list(Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model5.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl5
+
+labels <- list(additional_acer ~ "acer", TotalScore ~ 'cattell', Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model6.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl6
+```
+
+```{r}
+# merge and format with flextable
+tbl_merge(tbls = list(tbl4, tbl5, tbl6), tab_spanner = str_c('Model ', 4:6)) %>%
+      modify_table_body(~.x %>% arrange(row_type == "glance_statistic")) %>%
+      as_flex_table() -> FlexTbl2
+
+(FlexTbl2 %>%
+  set_table_properties(layout = "autofit", width = 0.7) %>%
+  set_caption(caption = 'Table S3', autonum = FALSE) %>%
+  footnote(x = ., i = 3, j = 1, ref_symbols = c('3'), value = as_paragraph(c('Female = 0, Male = 1.'))) %>%
+  add_footer_lines(values = c('Table S3: Regression results of average DMNC--DMNA connectivity on memory ability removing GSR from our analysis pipeline. between = average strength of connection between DMNC and DMNA regions; acer = cognitive capacity score, cattell = fluid intelligence score.')) -> FlexTbl2)
+```
+
+```{r, warning=FALSE}
+flextable::save_as_docx(values = list(FlexTbl2),
+                        align = 'center',
+                        path = 'TableS3.docx',
+                        pr_section = prop_section(
+                            page_size = page_size(width = 6.5, height = 5, orient = "portait"), 
+                            type = "continuous",
+                            page_margins = page_mar(bottom = 0, top = 0, right = 0, left = 0)
+                          ))
+```
+
+
+## extra
+
+```{r}
+# fit extra models
+model7.fit <- lm(memoryability ~ extra, 
+                 na.action = na.omit, 
+                 data = PredictTbl_tidy)
+model8.fit <- lm(memoryability ~ extra + Age + Sex + fd, 
+                 na.action = na.omit, 
+                 data = PredictTbl_tidy)
+model9.fit <- lm(memoryability ~ extra + Age + Sex + fd + additional_acer + TotalScore, 
+                 na.action = na.omit,
+                 data = PredictTbl_tidy)
+```
+
+
+```{r}
+# summarise models with gtsummary
+tbl_regression(model7.fit) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl7
+
+labels <- list(Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model8.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl8
+
+labels <- list(additional_acer ~ "acer", TotalScore ~ 'cattell', Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model9.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl9
+```
+
+```{r}
+# merge and format with flextable
+tbl_merge(tbls = list(tbl7, tbl8, tbl9), tab_spanner = str_c('Model ', 7:9)) %>%
+      modify_table_body(~.x %>% arrange(row_type == "glance_statistic")) %>%
+      as_flex_table() -> FlexTbl3
+
+(FlexTbl3 %>%
+  set_table_properties(layout = 'autofit', width = 0.7) %>%
+  set_caption(caption = 'Table S4', autonum = FALSE) %>%
+  footnote(x = ., i = 3, j = 1, ref_symbols = c('3'), value = as_paragraph(c('Female = 0, Male = 1.'))) %>%
+  add_footer_lines(values = c('Table S4: Regression results of average DMNC connectivity with the rest of the brain on memory ability removing GSR from our analysis pipeline. extra = average strength of connection between DMNC regions and regions not in the DMNC or DMNA; acer = cognitive capacity score, cattell = fluid intelligence score.')) -> FlexTbl3)
+```
+
+```{r}
+flextable::save_as_docx(values = list(FlexTbl3),
+                        align = 'center',
+                        path = 'TableS4.docx',
+                        pr_section = prop_section(
+                            page_size = page_size(width = 6.5, height = 4, orient = "portait"), 
+                            type = "continuous",
+                            page_margins = page_mar(bottom = 0, top = 0, right = 0, left = 0)
+                          ))
+```
+
+
+## Hipp
+
+```{r}
+# within models
+model10.fit <- lm(memoryability ~ hipp,
+                  na.action = na.omit, 
+                  data = PredictTbl_tidy)
+model11.fit <- lm(memoryability ~ hipp + Age + Sex + fd,
+                  na.action = na.omit,
+                  data = PredictTbl_tidy)
+model12.fit <- lm(memoryability ~ hipp + Age + Sex + fd + additional_acer + TotalScore,
+                  na.action = na.omit,
+                  data = PredictTbl_tidy)
+```
+
+```{r, warning=FALSE}
+tbl_regression(model10.fit) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl10
+
+labels <- list(Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model11.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl11
+
+labels <- list(additional_acer ~ "acer", TotalScore ~ 'cattell', Age ~ "age", Sex ~ "sex")
+
+tbl_regression(model12.fit, show_single_row = 'Sex', label = labels) %>%
+  add_glance_table(include = c(nobs, r.squared)) %>%
+  add_significance_stars() -> tbl12
+```
+
+```{r}
+# merge tables
+tbl_merge(tbls = list(tbl10, tbl11, tbl12),
+          tab_spanner = str_c('Model ', 10:12)) %>%
+    modify_table_body(~.x %>% arrange(row_type == "glance_statistic")) %>%
+   as_flex_table() -> HippTbl
+
+(HippTbl %>%
+  set_table_properties(layout = 'autofit', width = 0.7) %>%
+  set_caption(caption = 'Table S5', autonum = FALSE) %>%
+  footnote(x = ., i = 3, j = 1, ref_symbols = c('3'), value = as_paragraph(c('Female = 0, Male = 1.'))) %>%
+  add_footer_lines(values = c('Table S5: Regression results of average Hippocampal connectivity on memory ability removing GSR from our analysis pipeline. hipp = average strength of connection of hippocampal regions; acer = cognitive capacity score, cattell = fluid intelligence score.')) -> HippTbl)
+```
+
+## Write
+
+```{r}
+# write as a .docx
+flextable::save_as_docx(values = list(HippTbl),
+                        align = 'center',
+                        path = 'TableS5.docx',
+                        pr_section = prop_section(
+                            page_size = page_size(width = 6.5, height = 4, orient = "portait"), 
+                            type = "continuous",
+                            page_margins = page_mar(bottom = 0, top = 0, right = 0, left = 0)
+                          ))
+```

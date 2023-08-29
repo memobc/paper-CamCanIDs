@@ -1,0 +1,70 @@
+---
+title: "Preliminary Update"
+author: "Kyle Kurkela"
+date: '`r Sys.Date()`'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(out.width = 1000,
+                      out.height = 700,
+                      fig.align = 'center',
+                      echo = FALSE)
+```
+
+## Preliminary Analysis Update
+
+Welcome to the preliminary analysis update for the CamCan Individual Differences project.
+
+Before doing the analyses as outlined in the [preregistration](https://osf.io/awk5b), I want to do some basic data checks.
+
+Do the connectivity matrices look "alright"?
+
+```{r}
+pngFiles <- c('figures/Figure1_WholeBrainMeanConnectivity.png', 'figures/Figure1_WholeBrainMeanConnectivity_fixed.png')
+out1 <- gifski::gifski(pngFiles, gif_file = 'figure1.gif', progress = FALSE, delay = 2)
+knitr::include_graphics(out1)
+```
+
+**Figure 1**: Whole Brain Mean Connectivity Matrix. See the [Schefer atlas github page](https://github.com/ThomasYeoLab/CBIG/tree/master/stable_projects/brain_parcellation/Schaefer2018_LocalGlobal) for more information about the network labels.
+
+```{r}
+pngFiles <- c('figures/Figure2_DistributionOfConnections.png', 'figures/Figure2_DistributionOfConnections_fixed.png')
+out2 <- gifski::gifski(pngFiles, gif_file = 'figure2.gif', progress = FALSE, delay = 2)
+knitr::include_graphics(out2)
+```
+
+**Figure 2**: The distribution of connectivity strength's seen in the lower triangle of the Figure 1.
+
+```{r}
+pngFiles <- c('figures/Figure3_MeanConnDefault.png', 'figures/Figure3_MeanConnDefault_fixed.png')
+out3 <- gifski::gifski(pngFiles, gif_file = 'figure3.gif', progress = FALSE, delay = 2)
+knitr::include_graphics(out3)
+```
+
+**Figure 3**: The average connectivity strength for the connections within the default mode network subnetworks from the Schaefer 17 network atlas.  
+
+
+```{r}
+pngFiles <- c('figures/Figure4_DeviationConnDefault.png', 'figures/Figure4_DeviationConnDefault_fixed.png')
+out4 <- gifski::gifski(pngFiles, gif_file = 'figure4.gif', progress = FALSE, delay = 2)
+knitr::include_graphics(out4)
+```
+
+**Figure 4**: How much do these default mode connections vary from subject-to-subject? This matrix displays the standard deviation across subjects for each connection.    
+
+```{r}
+pngFiles <- c('figures/Figure5_MostVariableConnection.png', 'figures/Figure5_MostVariableConnection_fixed.png')
+out5 <- gifski::gifski(pngFiles, gif_file = 'figure5.gif', progress = FALSE, delay = 2)
+knitr::include_graphics(out5)
+```
+
+**Figure 5**: The distribution of connectivity strengths across subjects for the default mode network connection that is the _most_ variable (i.e., has the highest `std. dev.` in Figure 4).     
+
+```{r}
+pngFiles <- c('figures/Figure6_LeastVariableConnection.png', 'figures/Figure6_LeastVariableConnection_fixed.png')
+out6 <- gifski::gifski(pngFiles, gif_file = 'figure6.gif', progress = FALSE, delay = 2)
+knitr::include_graphics(out6)
+```
+
+**Figure 6**: The distribution of connectivity strengths across subjects for the default mode network connection that is the _least_ variable (i.e., has the lowest `std. dev.` in Figure 4).  

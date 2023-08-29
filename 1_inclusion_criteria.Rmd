@@ -1,0 +1,196 @@
+---
+title: "CamCan Preliminary Analysis"
+author: "Kyle Kurkela"
+date: "`r Sys.Date()`"
+params:
+  fd_mean_threshold: 0.3
+  num_runs_threshold: 0
+  age_threshold: 50
+  include_emomem: FALSE
+output:
+  html_document: 
+    toc: yes
+    toc_float: yes
+    df_print: paged
+    code_folding: hide
+---
+
+```{r echo = FALSE, message = FALSE}
+suppressPackageStartupMessages(library(tidyverse))
+fd_mean_thresh <- params$fd_mean_threshold
+num_runs_thresh <- params$num_runs_threshold
+age_thresh <- params$age_threshold
+```
+
+```{r paged.print=TRUE}
+# load data
+df <- read_rds('data.rds')
+motion <- read_rds('motion.rds') %>% mutate(CCID = str_remove(CCID, 'sub-'))
+
+# for the movie watching task, determine how many echos exceed the movement threshold
+# If at least 1 echo is "corrupted", mark the entire scan as "BadMotion"
+motion %>% 
+  filter(task == 'movie') %>%
+  group_by(CCID) %>%
+  summarise(BadMotion = sum(fd_mean > fd_mean_thresh), .groups = 'drop') %>%
+  mutate(BadMotion = BadMotion > 1) %>%
+  add_column(task = 'movie') -> movie
+
+# determine whether the smt and rest tasks exceed the movement threshold.
+# Append the movie watching data to create a motion summary df
+motion %>%
+  filter(task != 'movie') %>%
+  mutate(BadMotion = fd_mean > fd_mean_thresh) %>%
+  select(CCID, task, BadMotion) %>%
+  bind_rows(., movie) %>%
+  group_by(CCID) %>%
+  summarise(ExcludeMotion = sum(BadMotion) > num_runs_thresh, .groups = 'drop') -> motion.summary
+
+# Add the motion summary to the end of the data
+df %>% 
+  left_join(., motion.summary, by = 'CCID') %>%
+  mutate(ExcludeMotion = if_else(is.na(ExcludeMotion), FALSE, ExcludeMotion)) -> df
+```
+
+## How many subjects do we have?
+
+```{r}
+# each row = subject
+nrow(df)
+```
+## How many subjects are usuable?
+
+```{r}
+# Create a new column that indicates where each participants has at least one missing scan
+df %>% 
+  rowwise() %>% 
+  mutate(AnyMissingMRI = !all(c_across(cols = anat_T1w:fmap_smt_NA))) %>% 
+  ungroup() -> df
+
+# Create a new column that indicates if each participant exceed our age threshold
+df %>%
+  mutate(AgeExclusion = Age > age_thresh) -> df
+
+# Determine who has missing Emotional Memory data
+df %>%
+  rowwise() %>%
+  mutate(AnyMissingEmoMem = is.na(TotalDetRecalls)) %>%
+  ungroup() -> df
+
+# Determine who has missing Wechler Memory Data
+df %>%
+  rowwise() %>%
+  mutate(AnyMissingWechler = any(is.na(homeint_v219), is.na(homeint_v515), 
+                                 is.na(homeint_storyrecall_i), is.na(homeint_storyrecall_d))) %>%
+  ungroup() -> df
+
+# Determine who has missing Cattell data
+df %>%
+  mutate(AnyMissingCattell = is.na(TotalScore)) -> df
+
+# Determine who meets preliminary inclusion criterion -- no missing data
+df %>%
+  mutate(MeetsInclusionCriterion = !any(AnyMissingMRI, AnyMissingEmoMem, AgeExclusion, ExcludeMotion)) -> df
+```
+
+```{r}
+# Hand Code a Sankey Diagram
+
+# Hand write the nodes data frame
+if(params$include_emomem){
+  name <- c('All Subjects', 'Has All MRI', 'Missing At Least One Image', 
+            'Low Motion', 'High Motion', str_glue('Under Age {age_thresh}'), 
+            str_glue('Over Age {age_thresh}'),'Has Weschler', 'Missing Weschler',
+            'Has Emo Memo', 'Missing Emo Mem', 'Meets Inclusion Criteria')
+  node_group = c('1', '1', '2', '1', '2', '1', '2', '1', '2', '1', '2', '1')
+  node <- 0:11
+} else {
+  name <- c('All Subjects', 'Has All MRI', 'Missing At Least One Image', 
+            'Low Motion', 'High Motion', str_glue('Under Age {age_thresh}'), 
+            str_glue('Over Age {age_thresh}'),'Has Weschler', 'Missing Weschler',
+            'Meets Inclusion Criteria')
+  node_group = c('1', '1', '2', '1', '2', '1', '2', '1', '2', '1')
+  node <- 0:9
+}
+nodes <- data.frame(node = node, 
+                    name = name,
+                    node_group = node_group)
+
+# Links
+
+## Missing MRI data
+
+df %>% 
+  ungroup() %>% 
+  count(AnyMissingMRI) %>%
+  pull() -> val
+  
+links <- data.frame(source = c(0, 0), target = c(1,2), value = val)
+
+## Gross Motion
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  count(ExcludeMotion) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(1,1), target = c(3,4), value = val) -> links
+
+## Age Restriction
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  filter(!ExcludeMotion) %>%
+  count(AgeExclusion) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(3,3), target = c(5,6), value = val) -> links
+
+## Missing Wechler
+
+df %>%
+  filter(!AnyMissingMRI) %>%
+  filter(!ExcludeMotion) %>%
+  filter(!AgeExclusion) %>%
+  mutate(AnyMissingWechler = factor(AnyMissingWechler, levels = c(FALSE, TRUE), labels = c(FALSE, TRUE))) %>% 
+  count(AnyMissingWechler) %>%
+  complete(AnyMissingWechler, fill = list(n = 0)) %>%
+  pull(n) -> val
+
+links %>%
+  add_row(source = c(5,5), target = c(7,8), value = val) -> links
+
+if(params$include_emomem){
+  ## Missing Missing Emo Mem
+  
+  df %>%
+    filter(!AnyMissingMRI) %>%
+    filter(!ExcludeMotion) %>%
+    filter(!AgeExclusion) %>%
+    filter(!AnyMissingWechler) %>%
+    count(AnyMissingEmoMem) %>%
+    pull(n) -> val
+  
+  links %>%
+    add_row(source = c(7,7), target = c(9,10), value = val) -> links
+  
+  links %>%
+    add_row(source = 9, target = 11, value = val[1]) -> links
+  
+} else {
+    links %>%
+    add_row(source = 7, target = 9, value = val[1]) -> links
+}
+
+networkD3::sankeyNetwork(Links = links, Nodes = nodes, 
+                         Source = 'source', 
+                         Target = 'target', 
+                         Value = 'value', 
+                         NodeID = 'name', 
+                         units = 'subjects', 
+                         NodeGroup = 'node_group', sinksRight = FALSE, fontSize = 12)
+```
+
+Of the `r nrow(df)` subjects, `r val[1]` meet the preliminary inclusion of having no missing data on our variables of interest. See the Sankey Diagram above to see why participants were excluded.  
